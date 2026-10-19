@@ -1,0 +1,31 @@
+<Window x:Class="Bildbetrachter.FolderListDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Zielordner" Width="560" Height="380" MinWidth="420" MinHeight="260"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ListBox x:Name="List" Grid.Row="0" Grid.Column="0" MouseDoubleClick="List_MouseDoubleClick" />
+
+        <StackPanel Grid.Row="0" Grid.Column="1" Margin="10,0,0,0" Width="120">
+            <Button Content="Hinzufügen …" Click="Add_Click" Margin="0,0,0,6" Padding="4" />
+            <Button Content="Löschen" Click="Delete_Click" Margin="0,0,0,6" Padding="4" />
+            <Button Content="Sortieren (A–Z)" Click="Sort_Click" Margin="0,0,0,6" Padding="4" />
+            <Button Content="▲ Nach oben" Click="Up_Click" Margin="0,0,0,6" Padding="4" />
+            <Button Content="▼ Nach unten" Click="Down_Click" Padding="4" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="OK" Width="90" Padding="4" IsDefault="True" Click="Ok_Click" Margin="0,0,8,0" />
+            <Button Content="Abbrechen" Width="90" Padding="4" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>
