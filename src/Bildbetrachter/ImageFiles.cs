@@ -1,5 +1,4 @@
 namespace Bildbetrachter;
-using System.IO;
 
 public sealed record ImageItem(string FullPath, string Name, DateTime Modified, DateTime Created, long Size)
 {
