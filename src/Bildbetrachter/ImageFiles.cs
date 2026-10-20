@@ -1,11 +1,55 @@
+using System.ComponentModel;
+using System.Windows;
+using System.Windows.Media.Imaging;
+
 namespace Bildbetrachter;
 
-public sealed record ImageItem(string FullPath, string Name, DateTime Modified, DateTime Created, long Size)
+public sealed class ImageItem : INotifyPropertyChanged
 {
+    public ImageItem(string fullPath, string name, DateTime modified, DateTime created, long size)
+    {
+        FullPath = fullPath; Name = name; Modified = modified; Created = created; Size = size;
+    }
+
+    public string FullPath { get; }
+    public string Name { get; }
+    public DateTime Modified { get; }
+    public DateTime Created { get; }
+    public long Size { get; }
+
     public string ModifiedText => Modified.ToString("g");
     public string SizeText => Size < 1024 ? $"{Size} B"
                             : Size < 1 << 20 ? $"{Size / 1024.0:0.#} KB"
                             : $"{Size / 1048576.0:0.##} MB";
+
+    // ---- Miniatur: wird erst geladen, wenn die Zeile tatsächlich sichtbar ist (Binding liest die Property) ----
+    BitmapSource? _thumb;
+    bool _requested;
+
+    public BitmapSource? Thumbnail
+    {
+        get
+        {
+            if (_thumb == null && !_requested)
+            {
+                _requested = true;
+                if (ThumbnailLoader.TryGetCached(this, out var cached)) _thumb = cached;
+                else ThumbnailLoader.Request(this);
+            }
+            return _thumb;
+        }
+    }
+
+    internal void ResetThumbnailRequest() => _requested = false;
+
+    internal void SetThumbnail(BitmapSource? bmp)
+    {
+        _thumb = bmp;
+        Application.Current?.Dispatcher.InvokeAsync(
+            () => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Thumbnail))));
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 public static class ImageFiles

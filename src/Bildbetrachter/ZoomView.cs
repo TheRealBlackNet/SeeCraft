@@ -35,6 +35,7 @@ public sealed class ZoomView : Grid
     BitmapSource? _bmp;
     double _zoom = 1, _x, _y;
     bool _userZoomed;
+    bool _keepCentered;   // bis zur ersten Benutzeraktion bleibt das Bild bei Fensteränderungen mittig
 
     enum DragMode { None, Pan, Band }
     DragMode _drag;
@@ -48,6 +49,14 @@ public sealed class ZoomView : Grid
 
     public event EventHandler? ZoomChanged;
     public event Action<int>? NavigateRequested;
+    public event EventHandler? DoubleClicked;
+    public event EventHandler? MiddleClicked;
+
+    public bool UserZoomed => _userZoomed;
+
+    /// <summary>Größe des Bildes bei 100 % in WPF-Einheiten.</summary>
+    public Size NaturalSize => _bmp == null ? new Size(0, 0)
+        : new Size(_bmp.PixelWidth * F, _bmp.PixelHeight * F);
 
     public ZoomView()
     {
@@ -59,11 +68,23 @@ public sealed class ZoomView : Grid
         _canvas.MouseLeftButtonDown += OnDown;
         _canvas.MouseMove += OnMove;
         _canvas.MouseLeftButtonUp += OnUp;
+        _canvas.MouseDown += (_, e) =>
+        {
+            if (e.ChangedButton != MouseButton.Middle) return;
+            MiddleClicked?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        };
         MouseWheel += OnWheel;
         SizeChanged += (_, _) =>
         {
             if (_bmp == null) return;
             if (AutoFit && !_userZoomed) _zoom = FitZoom();
+            if (_keepCentered)
+            {
+                var d = DisplaySize;
+                _x = (ActualWidth - d.Width) / 2;
+                _y = (ActualHeight - d.Height) / 2;
+            }
             Relayout();
         };
     }
@@ -131,6 +152,7 @@ public sealed class ZoomView : Grid
         var d = DisplaySize;
         _x = (ActualWidth - d.Width) / 2;   // neues Bild immer zentriert beginnen
         _y = (ActualHeight - d.Height) / 2;
+        _keepCentered = true;
         Relayout();
         Notify();
     }
@@ -156,6 +178,7 @@ public sealed class ZoomView : Grid
             var d = DisplaySize;
             _x = (ActualWidth - d.Width) / 2;
             _y = (ActualHeight - d.Height) / 2;
+            _keepCentered = true;
             Relayout();
             Notify();
         }
@@ -170,6 +193,7 @@ public sealed class ZoomView : Grid
 
         _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
         _userZoomed = true;
+        _keepCentered = false;
 
         var d1 = DisplaySize;
         _x = anchor.X - fx * d1.Width;
@@ -192,6 +216,7 @@ public sealed class ZoomView : Grid
     public void PanView(double dx, double dy)
     {
         if (_bmp == null) return;
+        _keepCentered = false;
         _x -= dx;
         _y -= dy;
         Relayout();
@@ -201,6 +226,12 @@ public sealed class ZoomView : Grid
 
     void OnDown(object sender, MouseButtonEventArgs e)
     {
+        if (e.ClickCount >= 2)
+        {
+            DoubleClicked?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+            return;
+        }
         if (_bmp == null) return;
         Keyboard.Focus(this);
         _canvas.CaptureMouse();
@@ -213,6 +244,7 @@ public sealed class ZoomView : Grid
         if (scrollable && !shift)
         {
             _drag = DragMode.Pan;
+            _keepCentered = false;
             _dragX0 = _x;
             _dragY0 = _y;
             Cursor = Cursors.SizeAll;
@@ -275,6 +307,7 @@ public sealed class ZoomView : Grid
         double newS = Math.Min(ActualWidth / pxW, ActualHeight / pxH);
         _zoom = Math.Clamp(newS / F, MinZoom, MaxZoom);
         _userZoomed = true;
+        _keepCentered = false;
 
         newS = _zoom * F;
         _x = ActualWidth / 2 - (px0 + pxW / 2) * newS;

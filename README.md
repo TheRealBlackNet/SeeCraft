@@ -41,13 +41,27 @@ direkt die Bildansicht.
 | Pos1 / Ende | erstes / letztes Bild der aktuellen Sortierung |
 | Pfeiltasten | Bildausschnitt verschieben |
 | Num + / Num − | Zoom: 10 20 30 50 70 100 125 150 200 300 500 700 1000 2000 3000 5000 % (zwischen zwei Stufen → nächste Stufe) |
-| Esc | zurück zur Liste |
+| Doppelklick | zurück zur Liste |
+| Mittlere Maustaste (oder F11) | Vollbild ein/aus |
+| Esc | zurück zur Liste (beendet auch das Vollbild) |
 | Rechtsklick | Verschieben …, Kopieren …, Sortieren, Lade-Modus |
 
 Das Fenster wächst beim Zoomen mit (bis zum Arbeitsbereich des Monitors). Lade-Modi (Rechtsklick): *Optimale Größe*
 (einpassen, nur verkleinern), *Aktuelle Zoomstufe*, *Originalgröße* (Standard nach Programmstart).
 Verschieben/Kopieren: Liste mit bis zu 10 Zielordnern (Hinzufügen, Löschen, Sortieren, ▲▼); Doppelklick oder OK führt aus.
 Sortierung: Geändert / Erstellt / Name, je auf- oder absteigend; Name nach Windows-Art (ABC_1, ABC_10, ABC_100).
+
+## Fenster-Verhalten (ab Version 1.1)
+
+- Die **Listenansicht** hat eine eigene, gespeicherte Fenstergröße. Beim Zurückkehren aus der Bildansicht (und beim Start)
+  erscheint sie in dieser Größe mittig auf dem aktuellen Bildschirm.
+- Beim Wechsel in die **Bildansicht** passt sich das Fenster der Bildgröße an (höchstens bis zum Arbeitsbereich des
+  Monitors); das Bild wird zentriert. Bei weiteren Bildern und beim Zoomen wächst das Fenster nur noch.
+- **Spaltenbreiten** (Ordner, Vorschau, Name, Geändert, Größe) werden gespeichert.
+- Der **Ordnerbaum** zeigt oben Bilder, Desktop, Dokumente, Downloads, Videos, Musik und Userhome, darunter „Dieser PC“.
+  „Galerie“ fehlt bewusst: Das ist in Windows 11 ein virtueller Ordner ohne echten Pfad.
+- **Miniaturvorschau (50 × 50)**: Rechtsklick → „Miniaturvorschau“; wird gespeichert. Die Miniaturen werden nur für
+  sichtbare Zeilen im Hintergrund geladen.
 
 ## Technik & Lizenzen
 

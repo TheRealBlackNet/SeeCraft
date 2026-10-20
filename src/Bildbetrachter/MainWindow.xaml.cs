@@ -8,6 +8,9 @@ namespace Bildbetrachter;
 
 public partial class MainWindow : Window
 {
+    const double ListMinW = 520, ListMinH = 320;
+    const double ViewerMinW = 200, ViewerMinH = 120;
+
     readonly AppSettings _s = AppSettings.Load();
     readonly ImageService _svc = new();
 
@@ -20,21 +23,53 @@ public partial class MainWindow : Window
     int _lastDir = 1;
     ZoomMode _mode = ZoomMode.Original;   // Standard nach Programmstart: Originalgröße
 
+    // Fenstergröße der Listenansicht (unabhängig von der Bildansicht)
+    double _listW, _listH;
+    bool _listMax;
+
+    // Vollbild
+    bool _fullscreen, _fsWasMax;
+    Rect _fsBounds;
+
+    bool _enterFit;   // beim Wechsel in die Bildansicht: Fenster auf das erste Bild anpassen
+
     CancellationTokenSource? _viewCts, _previewCts, _prefetchCts;
     TreeViewItem? _pcNode;
+    readonly List<TreeViewItem> _quickNodes = new();
+    readonly GridViewColumn _colName, _colModified, _colSize, _colThumb;
 
     public MainWindow(string? startArg)
     {
         InitializeComponent();
-        RestoreWindow();
+
+        // Listenfenster: gespeicherte Größe (begrenzt auf den Bildschirm), wird beim Start zentriert
+        var wa = SystemParameters.WorkArea;
+        _listW = Math.Clamp(_s.Width ?? 1100, ListMinW, wa.Width);
+        _listH = Math.Clamp(_s.Height ?? 700, ListMinH, wa.Height);
+        _listMax = _s.Maximized;
+        Width = _listW;
+        Height = _listH;
+        if (_listMax) WindowState = WindowState.Maximized;
 
         ListRoot.ColumnDefinitions[0].Width = new GridLength(Math.Max(120, _s.TreeWidth));
         ListRoot.ColumnDefinitions[2].Width = new GridLength(Math.Max(120, _s.PreviewWidth));
 
+        var gv = (GridView)FileList.View;
+        _colName = gv.Columns[0];
+        _colModified = gv.Columns[1];
+        _colSize = gv.Columns[2];
+        _colName.Width = Math.Max(40, _s.ColName);
+        _colModified.Width = Math.Max(40, _s.ColModified);
+        _colSize.Width = Math.Max(40, _s.ColSize);
+        _colThumb = new GridViewColumn { Header = "", Width = 62, CellTemplate = (DataTemplate)FileList.Resources["ThumbCell"] };
+        ApplyThumbnailMode();
+
         FileList.ContextMenu = BuildMenu();
         Viewer.ContextMenu = BuildMenu();
-        Viewer.ZoomChanged += (_, _) => { GrowToFit(); UpdateTitle(); };
+        Viewer.ZoomChanged += (_, _) => { FitWindowToImage(center: false, allowShrink: false); UpdateTitle(); };
         Viewer.NavigateRequested += d => Step(d);
+        Viewer.DoubleClicked += (_, _) => LeaveViewer();
+        Viewer.MiddleClicked += (_, _) => ToggleFullscreen();
         ApplyInfoVisibility();
 
         Loaded += async (_, _) => await StartAsync(startArg);
@@ -42,32 +77,57 @@ public partial class MainWindow : Window
 
     // ============================================================ Start / Fenster
 
-    void RestoreWindow()
-    {
-        if (_s.Width is double w && _s.Height is double h && w > 300 && h > 200)
-        {
-            Width = w; Height = h;
-            if (_s.Left is double l && _s.Top is double t
-                && l > SystemParameters.VirtualScreenLeft - 20 && t > SystemParameters.VirtualScreenTop - 20
-                && l < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100
-                && t < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
-            {
-                WindowStartupLocation = WindowStartupLocation.Manual;
-                Left = l; Top = t;
-            }
-        }
-        if (_s.Maximized) WindowState = WindowState.Maximized;
-    }
-
     void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        var rb = RestoreBounds;
-        _s.Maximized = WindowState == WindowState.Maximized;
-        if (WindowState == WindowState.Normal) rb = new Rect(Left, Top, Width, Height);
-        _s.Left = rb.Left; _s.Top = rb.Top; _s.Width = rb.Width; _s.Height = rb.Height;
-        _s.TreeWidth = ListRoot.ColumnDefinitions[0].ActualWidth;
-        _s.PreviewWidth = ListRoot.ColumnDefinitions[2].ActualWidth;
+        if (!_viewerActive) CaptureListState();
+        _s.Width = _listW;
+        _s.Height = _listH;
+        _s.Maximized = _listMax;
         _s.Save();
+    }
+
+    /// <summary>Merkt sich Größe und Spaltenbreiten der Listenansicht (nur aufrufen, solange sie sichtbar ist).</summary>
+    void CaptureListState()
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            _listMax = true;
+            _listW = RestoreBounds.Width;
+            _listH = RestoreBounds.Height;
+        }
+        else if (WindowState == WindowState.Normal)
+        {
+            _listMax = false;
+            _listW = Width;
+            _listH = Height;
+        }
+
+        static void Take(double actual, Action<double> set, double min) { if (actual > min) set(actual); }
+        Take(ListRoot.ColumnDefinitions[0].ActualWidth, v => _s.TreeWidth = v, 50);
+        Take(ListRoot.ColumnDefinitions[2].ActualWidth, v => _s.PreviewWidth = v, 50);
+        Take(_colName.ActualWidth, v => _s.ColName = v, 20);
+        Take(_colModified.ActualWidth, v => _s.ColModified = v, 20);
+        Take(_colSize.ActualWidth, v => _s.ColSize = v, 20);
+    }
+
+    void CenterOnWorkArea()
+    {
+        var wa = Native.GetWorkArea(this);
+        Left = wa.Left + (wa.Width - Width) / 2;
+        Top = wa.Top + (wa.Height - Height) / 2;
+    }
+
+    /// <summary>Zurück zur gespeicherten Listen-Fenstergröße, mittig auf dem aktuellen Bildschirm.</summary>
+    void RestoreListWindow()
+    {
+        if (_fullscreen) ExitFullscreen(restoreBounds: false);
+        MinWidth = ListMinW;
+        MinHeight = ListMinH;
+        WindowState = WindowState.Normal;
+        Width = _listW;
+        Height = _listH;
+        CenterOnWorkArea();
+        if (_listMax) WindowState = WindowState.Maximized;
     }
 
     async Task StartAsync(string? arg)
@@ -110,15 +170,82 @@ public partial class MainWindow : Window
         return @"C:\";
     }
 
+    // ============================================================ Vollbild
+
+    void ToggleFullscreen()
+    {
+        if (!_viewerActive) return;
+        if (_fullscreen) ExitFullscreen(restoreBounds: true);
+        else EnterFullscreen();
+    }
+
+    void EnterFullscreen()
+    {
+        _fsWasMax = WindowState == WindowState.Maximized;
+        _fsBounds = _fsWasMax ? RestoreBounds : new Rect(Left, Top, Width, Height);
+
+        var screen = Native.GetMonitorBounds(this);
+        WindowState = WindowState.Normal;
+        WindowStyle = WindowStyle.None;
+        ResizeMode = ResizeMode.NoResize;
+        Topmost = true;
+        Left = screen.Left;
+        Top = screen.Top;
+        Width = screen.Width;
+        Height = screen.Height;
+        _fullscreen = true;
+    }
+
+    void ExitFullscreen(bool restoreBounds)
+    {
+        _fullscreen = false;
+        Topmost = false;
+        WindowStyle = WindowStyle.SingleBorderWindow;
+        ResizeMode = ResizeMode.CanResize;
+        if (!restoreBounds) return;
+
+        Left = _fsBounds.Left;
+        Top = _fsBounds.Top;
+        Width = _fsBounds.Width;
+        Height = _fsBounds.Height;
+        if (_fsWasMax) WindowState = WindowState.Maximized;
+    }
+
     // ============================================================ Ordnerbaum
+
+    static IEnumerable<(string Name, string Path)> QuickFolders()
+    {
+        string G(Environment.SpecialFolder f) => Environment.GetFolderPath(f);
+        var list = new List<(string, string?)>
+        {
+            ("Bilder", G(Environment.SpecialFolder.MyPictures)),
+            ("Desktop", G(Environment.SpecialFolder.DesktopDirectory)),
+            ("Dokumente", G(Environment.SpecialFolder.MyDocuments)),
+            ("Downloads", Native.GetDownloadsFolder()),
+            ("Videos", G(Environment.SpecialFolder.MyVideos)),
+            ("Musik", G(Environment.SpecialFolder.MyMusic)),
+            ("Userhome", G(Environment.SpecialFolder.UserProfile)),
+        };
+        foreach (var (name, path) in list)
+            if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
+                yield return (name, path);
+    }
 
     void InitTree()
     {
         FolderTree.Items.Clear();
+        _quickNodes.Clear();
         FolderTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(async (_, e) =>
         {
             if (e.OriginalSource is TreeViewItem n) await EnsureLoadedAsync(n);
         }));
+
+        foreach (var (name, path) in QuickFolders())
+        {
+            var n = MakeNode(path, name);
+            _quickNodes.Add(n);
+            FolderTree.Items.Add(n);
+        }
 
         _pcNode = new TreeViewItem { Header = "Dieser PC", Tag = "::pc", IsExpanded = true };
         foreach (var d in DriveInfo.GetDrives())
@@ -164,6 +291,19 @@ public partial class MainWindow : Window
         try
         {
             string full = Path.GetFullPath(folder);
+
+            // Ist es genau ein Systemordner (Bilder, Desktop ...), diesen Eintrag markieren
+            string norm = full.TrimEnd('\\');
+            var quick = _quickNodes.FirstOrDefault(n =>
+                string.Equals(((string)n.Tag!).TrimEnd('\\'), norm, StringComparison.OrdinalIgnoreCase));
+            if (quick != null)
+            {
+                quick.IsSelected = true;
+                quick.BringIntoView();
+                return;
+            }
+
+            // sonst den Weg unter "Dieser PC" aufklappen
             string root = Path.GetPathRoot(full) ?? "";
             var cur = _pcNode.Items.OfType<TreeViewItem>()
                 .FirstOrDefault(i => string.Equals(i.Tag as string, root, StringComparison.OrdinalIgnoreCase));
@@ -329,10 +469,19 @@ public partial class MainWindow : Window
     void ApplyInfoVisibility() =>
         InfoPanel.Visibility = _s.ShowInfo ? Visibility.Visible : Visibility.Collapsed;
 
+    void ApplyThumbnailMode()
+    {
+        var gv = (GridView)FileList.View;
+        bool has = gv.Columns.Contains(_colThumb);
+        if (_s.ShowThumbnails && !has) gv.Columns.Insert(0, _colThumb);
+        else if (!_s.ShowThumbnails && has) gv.Columns.Remove(_colThumb);
+    }
+
     void InfoButton_Click(object sender, RoutedEventArgs e)
     {
         _s.ShowInfo = !_s.ShowInfo;
         ApplyInfoVisibility();
+        _s.Save();
     }
 
     void CopyMeta_Click(object sender, RoutedEventArgs e)
@@ -367,11 +516,18 @@ public partial class MainWindow : Window
         if (FileList.SelectedIndex >= 0) _index = FileList.SelectedIndex;
         if (_index < 0) _index = 0;
 
+        CaptureListState();   // Listenfenster-Größe merken, bevor das Fenster auf das Bild angepasst wird
+
         _viewerActive = true;
+        MinWidth = ViewerMinW;
+        MinHeight = ViewerMinH;
+        if (WindowState != WindowState.Normal) WindowState = WindowState.Normal;
+
         ListRoot.Visibility = Visibility.Collapsed;
         ViewerRoot.Visibility = Visibility.Visible;
         ViewerRoot.UpdateLayout();
         Viewer.AutoFit = _mode == ZoomMode.Optimal;
+        _enterFit = true;
         Keyboard.Focus(Viewer);
         ShowIndex(_index);
     }
@@ -381,9 +537,11 @@ public partial class MainWindow : Window
         _viewCts?.Cancel();
         _prefetchCts?.Cancel();
         _viewerActive = false;
+        _enterFit = false;
         Viewer.Clear();
         ViewerRoot.Visibility = Visibility.Collapsed;
         ListRoot.Visibility = Visibility.Visible;
+        RestoreListWindow();
 
         if (_index >= 0 && _index < _items.Count)
         {
@@ -421,7 +579,12 @@ public partial class MainWindow : Window
                 li = await _svc.GetAsync(item.FullPath, 0, cts.Token);
             if (cts.IsCancellationRequested || !_viewerActive) return;
 
-            Viewer.SetImage(li, _mode);   // löst ZoomChanged aus -> Fenster passt sich an, Titel wird aktualisiert
+            Viewer.SetImage(li, _mode);   // löst ZoomChanged aus -> Fenster wächst bei Bedarf
+            if (_enterFit)
+            {
+                _enterFit = false;
+                FitWindowToImage(center: true, allowShrink: true);
+            }
             UpdateTitle();
             Prefetch(i);
         }
@@ -461,24 +624,46 @@ public partial class MainWindow : Window
         });
     }
 
-    /// <summary>Fenster wächst mit dem Zoom mit (bis zum Arbeitsbereich des Monitors), schrumpft aber nie von selbst.</summary>
-    void GrowToFit()
+    /// <summary>
+    /// Passt das Fenster an die Bildgröße an (höchstens bis zum Arbeitsbereich des Monitors).
+    /// center/allowShrink = true beim Wechsel in die Bildansicht; sonst wächst das Fenster nur.
+    /// Im Modus "Optimal" gilt die Originalgröße des Bildes als Wunschgröße (danach wird eingepasst).
+    /// </summary>
+    void FitWindowToImage(bool center, bool allowShrink)
     {
-        if (!_viewerActive || WindowState != WindowState.Normal || _mode == ZoomMode.Optimal || !Viewer.HasImage) return;
-        if (Viewer.ActualWidth < 1) return;
+        if (!_viewerActive || _fullscreen || WindowState != WindowState.Normal || !Viewer.HasImage) return;
+        if (Viewer.ActualWidth < 1 || Viewer.ActualHeight < 1) return;
 
-        var disp = Viewer.DisplaySize;
-        double extraW = disp.Width - Viewer.ActualWidth;
-        double extraH = disp.Height - Viewer.ActualHeight;
-        if (extraW <= 0.5 && extraH <= 0.5) return;
-
+        var want = _mode == ZoomMode.Optimal && !Viewer.UserZoomed ? Viewer.NaturalSize : Viewer.DisplaySize;
         var wa = Native.GetWorkArea(this);
-        double newW = Math.Min(Width + Math.Max(0, extraW), wa.Width);
-        double newH = Math.Min(Height + Math.Max(0, extraH), wa.Height);
-        Width = newW;
-        Height = newH;
-        Left = Math.Max(wa.Left, Math.Min(Left, wa.Right - newW));
-        Top = Math.Max(wa.Top, Math.Min(Top, wa.Bottom - newH));
+
+        // Fensterrahmen + Titelleiste = Fenster minus Anzeigebereich (beide Werte aus demselben Layout-Stand)
+        double chromeW = ActualWidth - Viewer.ActualWidth;
+        double chromeH = ActualHeight - Viewer.ActualHeight;
+
+        double w = Math.Min(want.Width + chromeW, wa.Width);
+        double h = Math.Min(want.Height + chromeH, wa.Height);
+        if (!allowShrink)
+        {
+            w = Math.Max(w, ActualWidth);
+            h = Math.Max(h, ActualHeight);
+        }
+        w = Math.Max(w, MinWidth);
+        h = Math.Max(h, MinHeight);
+        if (Math.Abs(w - Width) < 0.5 && Math.Abs(h - Height) < 0.5 && !center) return;
+
+        Width = w;
+        Height = h;
+        if (center)
+        {
+            Left = wa.Left + (wa.Width - w) / 2;
+            Top = wa.Top + (wa.Height - h) / 2;
+        }
+        else
+        {
+            Left = Math.Max(wa.Left, Math.Min(Left, wa.Right - w));
+            Top = Math.Max(wa.Top, Math.Min(Top, wa.Bottom - h));
+        }
     }
 
     // ============================================================ Tastatur
@@ -499,6 +684,7 @@ public partial class MainWindow : Window
             case Key.Home: _lastDir = -1; ShowIndex(0); break;
             case Key.End: _lastDir = 1; ShowIndex(_items.Count - 1); break;
             case Key.Escape: LeaveViewer(); break;
+            case Key.F11: ToggleFullscreen(); break;
             case Key.Add: case Key.OemPlus: Viewer.ZoomStep(1); break;
             case Key.Subtract: case Key.OemMinus: Viewer.ZoomStep(-1); break;
             case Key.Left: Viewer.PanView(-Pan, 0); break;
@@ -523,7 +709,7 @@ public partial class MainWindow : Window
         var sortItems = new List<(MenuItem Mi, SortField F, bool Desc)>();
         void AddSort(string text, SortField f, bool desc)
         {
-            var mi = Item(text, (_, _) => { _s.SortField = f; _s.SortDescending = desc; ApplySort(); });
+            var mi = Item(text, (_, _) => { _s.SortField = f; _s.SortDescending = desc; ApplySort(); _s.Save(); });
             sortMenu.Items.Add(mi);
             sortItems.Add((mi, f, desc));
         }
@@ -550,13 +736,28 @@ public partial class MainWindow : Window
         AddZoom("In Originalgröße (100 %)", ZoomMode.Original);
         menu.Items.Add(zoomMenu);
 
-        var info = Item("Bildinformationen anzeigen", (_, _) => { _s.ShowInfo = !_s.ShowInfo; ApplyInfoVisibility(); });
+        menu.Items.Add(new Separator());
+        var thumbs = Item("Miniaturvorschau (50 × 50)", (_, _) =>
+        {
+            _s.ShowThumbnails = !_s.ShowThumbnails;
+            ApplyThumbnailMode();
+            _s.Save();
+        });
+        menu.Items.Add(thumbs);
+
+        var info = Item("Bildinformationen anzeigen", (_, _) =>
+        {
+            _s.ShowInfo = !_s.ShowInfo;
+            ApplyInfoVisibility();
+            _s.Save();
+        });
         menu.Items.Add(info);
 
         menu.Opened += (_, _) =>
         {
             foreach (var (mi, f, desc) in sortItems) mi.IsChecked = _s.SortField == f && _s.SortDescending == desc;
             foreach (var (mi, m) in zoomItems) mi.IsChecked = _mode == m;
+            thumbs.IsChecked = _s.ShowThumbnails;
             info.IsChecked = _s.ShowInfo;
         };
         return menu;
