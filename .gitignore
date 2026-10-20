@@ -1,1 +1,4 @@
 /*.zip
+/publish
+/src/Bildbetrachter/bin/Release/*
+/src/Bildbetrachter/obj

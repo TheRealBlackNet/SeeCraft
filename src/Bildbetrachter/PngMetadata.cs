@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.IO;
 using System.Text;
 
 namespace Bildbetrachter;

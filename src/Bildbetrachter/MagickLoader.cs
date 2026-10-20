@@ -1,4 +1,5 @@
 using ImageMagick;
+using System.IO;
 
 namespace Bildbetrachter;
 

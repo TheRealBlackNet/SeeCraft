@@ -1,0 +1,8 @@
+// Absicherung: diese Namespaces gelten fuer alle Dateien des Projekts
+// (falls ImplicitUsings in der eigenen Umgebung nicht greift).
+global using System;
+global using System.Collections.Generic;
+global using System.IO;
+global using System.Linq;
+global using System.Threading;
+global using System.Threading.Tasks;

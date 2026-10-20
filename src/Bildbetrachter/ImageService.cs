@@ -1,4 +1,5 @@
 namespace Bildbetrachter;
+using System.IO;
 
 /// <summary>LRU-Cache mit Byte-Budget: haelt nur so viel Bilddaten, wie das Budget erlaubt.</summary>
 public sealed class ImageCache
