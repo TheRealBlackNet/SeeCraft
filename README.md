@@ -1,8 +1,7 @@
 # Bildbetrachter – Ersatz für ACDSee 3.1
 
 Schneller Bildbetrachter für Windows 10/11 mit zwei Ansichten (**Liste** und **Bild**).
-C# / .NET 10 / WPF. **Hinweis:** Der Quelltext wurde noch nicht auf einem Windows-Rechner kompiliert – falls der
-Build Fehler meldet, bitte die Meldung zurückschicken, dann wird nachgebessert.
+C# / .NET 10 / WPF. 
 
 ## Installation in 3 Schritten
 
