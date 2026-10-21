@@ -1,0 +1,12 @@
+{
+  "BMP":  [".bmp", ".dib"],
+  "EMF":  [".emf"],
+  "GIF":  [".gif"],
+  "JPG":  [".jpg", ".jpeg", ".jpe", ".jfif"],
+  "PCX":  [".pcx"],
+  "PNG":  [".png"],
+  "TIF":  [".tif", ".tiff"],
+  "TNG":  [".tga"],
+  "WEBP": [".webp"],
+  "WMF":  [".wmf"]
+}

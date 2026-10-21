@@ -63,7 +63,7 @@ public static class ImageFiles
     /// <summary>Formate, die ueber ImageMagick (Magick.NET) geladen werden.</summary>
     public static readonly HashSet<string> MagickExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".webp", ".heic", ".heif", ".avif", ".jxl", ".tga", ".psd", ".jp2", ".dds", ".pcx"
+        ".webp", ".heic", ".heif", ".avif", ".jxl", ".tga", ".psd", ".jp2", ".dds", ".pcx", ".emf", ".wmf"
     };
 
     public static bool IsImage(string extension) =>
