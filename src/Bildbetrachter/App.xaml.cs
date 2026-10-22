@@ -16,35 +16,66 @@ public partial class App : Application
     MainWindow? _main;
     readonly CancellationTokenSource _cts = new();
 
-    protected override void OnStartup(StartupEventArgs e)
+protected override void OnStartup(StartupEventArgs e)
+{
+    base.OnStartup(e);
+    string? arg = e.Args.FirstOrDefault();
+
+    // 1) register handler FIRST – any exception during single-instance
+    //    detection must not kill or silently bypass the app
+    DispatcherUnhandledException += (_, a) =>
     {
-        base.OnStartup(e);
-        string? arg = e.Args.FirstOrDefault();
+        MessageBox.Show(a.Exception.ToString(), "Bildbetrachter",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
+        a.Handled = true;
+    };
 
+    try
+    {
         _mutex = new Mutex(true, MutexName, out bool isFirst);
-        if (!isFirst && SendToRunningInstance(arg))
-        {
-            Shutdown();
-            return;
-        }
-        // (Antwortet die andere Instanz nicht, starten wir ganz normal weiter.)
 
-        // Während des Blätterns moeglichst keine blockierenden Gen2-Collections.
+        // 2) if a mutex exists but the owning process has crashed,
+        //    treat it as "we are first" instead of "forwarding to nobody"
+        if (!isFirst)
+        {
+            try
+            {
+                // AbandonedMutexException proves the owner is gone
+                if (!_mutex.WaitOne(0))
+                {
+                    // we are a genuine second instance
+                    if (SendToRunningInstance(arg))
+                    {
+                        Shutdown();
+                        return;
+                    }
+                    // owner exists but isn't reachable -> fall through and
+                    // become a working instance WITH a pipe server
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                isFirst = true;               // previous instance died
+            }
+        }
+
         if (!GCSettings.IsServerGC)
             GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
-
-        DispatcherUnhandledException += (_, args) =>
-        {
-            MessageBox.Show(args.Exception.Message, "Bildbetrachter", MessageBoxButton.OK, MessageBoxImage.Warning);
-            args.Handled = true;
-        };
 
         _main = new MainWindow(arg);
         _main.Show();
 
-        if (isFirst) StartPipeServer();
+        // 3) always start the pipe server – otherwise a rare startup
+        //    problem makes every later launch open a new window
+        StartPipeServer();
     }
-
+    catch (Exception ex)
+    {
+        MessageBox.Show(ex.Message, "Bildbetrachter – Startfehler",
+            MessageBoxButton.OK, MessageBoxImage.Error);
+        Shutdown();
+    }
+}
     protected override void OnExit(ExitEventArgs e)
     {
         _cts.Cancel();
@@ -53,32 +84,33 @@ public partial class App : Application
 
     // ---------------------------------------------------------------- zweite Instanz -> erste Instanz
 
-    static bool SendToRunningInstance(string? arg)
-    {
-        string text = "";
-        try { if (!string.IsNullOrWhiteSpace(arg)) text = Path.GetFullPath(arg.Trim('"')); }
-        catch { /* ungültiger Pfad -> nur Fenster in den Vordergrund holen */ }
+	static bool SendToRunningInstance(string? arg)
+	{
+		string text = "";
+		try { if (!string.IsNullOrWhiteSpace(arg)) text = Path.GetFullPath(arg.Trim('"')); }
+		catch { }
 
-        Native.AllowSetForegroundWindow(-1);   // die laufende Instanz darf sich in den Vordergrund holen
+		// 4) Protect the P/Invoke – it must never abort the forward
+		try { Native.AllowSetForegroundWindow(-1); } catch { }
 
-        // Die erste Instanz startet möglicherweise gerade erst: bis zu ca. 5 Sekunden lang versuchen
-        for (int i = 0; i < 50; i++)
-        {
-            try
-            {
-                using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
-                client.Connect(100);
-                using var writer = new StreamWriter(client, new UTF8Encoding(false)) { AutoFlush = true };
-                writer.WriteLine(text);
-                return true;
-            }
-            catch (TimeoutException) { }
-            catch (IOException) { Thread.Sleep(100); }
-            catch (UnauthorizedAccessException) { return false; }
-        }
-        return false;
-    }
-
+		// 5) Retry long enough for a cold-start first instance (~10 s)
+		for (int i = 0; i < 100; i++)
+		{
+			try
+			{
+				using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+				client.Connect(100);
+				using var writer = new StreamWriter(client, new UTF8Encoding(false)) { AutoFlush = true };
+				writer.WriteLine(text);
+				return true;
+			}
+			catch (UnauthorizedAccessException) { return false; }
+			catch (TimeoutException) { Thread.Sleep(100); }   // <-- was missing
+			catch (IOException)      { Thread.Sleep(100); }
+			catch                    { Thread.Sleep(100); }
+		}
+		return false;
+	}
     // ---------------------------------------------------------------- erste Instanz: Pipe-Server
 
     void StartPipeServer()
