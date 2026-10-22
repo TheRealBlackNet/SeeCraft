@@ -51,6 +51,12 @@ Das Fenster wächst beim Zoomen mit (bis zum Arbeitsbereich des Monitors). Lade-
 Verschieben/Kopieren: Liste mit bis zu 10 Zielordnern (Hinzufügen, Löschen, Sortieren, ▲▼); Doppelklick oder OK führt aus.
 Sortierung: Geändert / Erstellt / Name, je auf- oder absteigend; Name nach Windows-Art (ABC_1, ABC_10, ABC_100).
 
+## Eine Instanz
+
+Läuft der Bildbetrachter bereits und wird ein weiteres Bild geöffnet (Doppelklick im Explorer, „Öffnen mit“),
+erscheint es im vorhandenen Fenster; die neue Instanz beendet sich sofort. Ein Ordner als Argument zeigt die Listenansicht.
+Die Übergabe läuft über eine Named Pipe, die nur für den eigenen Windows-Benutzer erreichbar ist.
+
 ## Icons (Ordner `src\ICON`)
 
 - `APP_ICON.png` wird von `build.ps1` in eine mehrgrößige `.ico` (16–256 px) umgewandelt und als Anwendungs-Icon der EXE

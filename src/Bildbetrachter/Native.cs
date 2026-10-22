@@ -22,6 +22,9 @@ internal static class Native
     [DllImport("user32.dll")]
     static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO info);
 
+    [DllImport("user32.dll")]
+    public static extern bool AllowSetForegroundWindow(int processId);
+
     [DllImport("shell32.dll")]
     static extern int SHGetKnownFolderPath(ref Guid rfid, uint flags, IntPtr token, out IntPtr path);
 

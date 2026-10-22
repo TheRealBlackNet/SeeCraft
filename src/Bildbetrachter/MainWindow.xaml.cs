@@ -31,6 +31,8 @@ public partial class MainWindow : Window
     bool _fullscreen, _fsWasMax;
     Rect _fsBounds;
 
+    readonly TaskCompletionSource _ready = new();   // Start abgeschlossen (für weitergeleitete Pfade)
+
     bool _enterFit;   // beim Wechsel in die Bildansicht: Fenster auf das erste Bild anpassen
 
     CancellationTokenSource? _viewCts, _previewCts, _prefetchCts;
@@ -132,6 +134,12 @@ public partial class MainWindow : Window
 
     async Task StartAsync(string? arg)
     {
+        try { await StartCoreAsync(arg); }
+        finally { _ready.TrySetResult(); }
+    }
+
+    async Task StartCoreAsync(string? arg)
+    {
         string? folder = null, file = null;
 
         if (!string.IsNullOrWhiteSpace(arg))
@@ -157,6 +165,76 @@ public partial class MainWindow : Window
         await OpenFolderAsync(folder, file);
 
         if (file != null) EnterViewer();
+    }
+
+    /// <summary>Wird von der zweiten Programminstanz aufgerufen: Bild bzw. Ordner in diesem Fenster öffnen.</summary>
+    public async Task OpenExternalAsync(string path)
+    {
+        try
+        {
+            await _ready.Task;
+            path = path.Trim().Trim('"');
+
+            string? folder = null, file = null;
+            if (path.Length > 0)
+            {
+                if (await Task.Run(() => File.Exists(path)))
+                {
+                    file = Path.GetFullPath(path);
+                    folder = Path.GetDirectoryName(file);
+                }
+                else if (await Task.Run(() => Directory.Exists(path)))
+                    folder = Path.GetFullPath(path);
+            }
+
+            BringToFront();
+            if (folder == null) return;
+
+            if (file == null)
+            {
+                if (_viewerActive) LeaveViewer();
+                await OpenFolderAsync(folder, null);
+                return;
+            }
+            if (!ImageFiles.IsImage(Path.GetExtension(file))) return;
+
+            int Find() => _items.ToList().FindIndex(x => string.Equals(x.FullPath, file, StringComparison.OrdinalIgnoreCase));
+
+            bool sameFolder = _folder != null && string.Equals(
+                Path.GetFullPath(_folder).TrimEnd('\\'), folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+            int idx = sameFolder ? Find() : -1;
+            if (idx < 0)
+            {
+                await OpenFolderAsync(folder, file);   // anderer Ordner (oder neue Datei): Liste neu einlesen
+                idx = Find();
+            }
+            if (idx < 0) return;
+
+            if (_viewerActive)
+            {
+                _enterFit = true;   // Fenster wie beim Öffnen auf das neue Bild anpassen
+                ShowIndex(idx);
+            }
+            else
+            {
+                FileList.SelectedIndex = idx;
+                EnterViewer();
+            }
+        }
+        catch { /* weitergeleiteter Pfad nicht lesbar - ignorieren */ }
+    }
+
+    void BringToFront()
+    {
+        if (WindowState == WindowState.Minimized)
+            System.Windows.Shell.SystemCommands.RestoreWindow(this);
+        Activate();
+        if (!_fullscreen)
+        {
+            Topmost = true;    // Trick, damit das Fenster sicher nach vorne kommt
+            Topmost = false;
+        }
+        Focus();
     }
 
     static string DefaultFolder()
