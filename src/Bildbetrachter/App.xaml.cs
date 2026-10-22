@@ -16,66 +16,51 @@ public partial class App : Application
     MainWindow? _main;
     readonly CancellationTokenSource _cts = new();
 
-protected override void OnStartup(StartupEventArgs e)
-{
-    base.OnStartup(e);
-    string? arg = e.Args.FirstOrDefault();
+	protected override void OnStartup(StartupEventArgs e)
+	{
+		DispatcherUnhandledException += (_, a) =>
+		{
+			MessageBox.Show(a.Exception.ToString(), "Bildbetrachter",
+				MessageBoxButton.OK, MessageBoxImage.Warning);
+			a.Handled = true;
+		};
 
-    // 1) register handler FIRST – any exception during single-instance
-    //    detection must not kill or silently bypass the app
-    DispatcherUnhandledException += (_, a) =>
-    {
-        MessageBox.Show(a.Exception.ToString(), "Bildbetrachter",
-            MessageBoxButton.OK, MessageBoxImage.Warning);
-        a.Handled = true;
-    };
+		string? arg = e.Args.FirstOrDefault();
 
-    try
-    {
-        _mutex = new Mutex(true, MutexName, out bool isFirst);
+		try
+		{
+			_mutex = new Mutex(true, MutexName, out bool isFirst);
 
-        // 2) if a mutex exists but the owning process has crashed,
-        //    treat it as "we are first" instead of "forwarding to nobody"
-        if (!isFirst)
-        {
-            try
-            {
-                // AbandonedMutexException proves the owner is gone
-                if (!_mutex.WaitOne(0))
-                {
-                    // we are a genuine second instance
-                    if (SendToRunningInstance(arg))
-                    {
-                        Shutdown();
-                        return;
-                    }
-                    // owner exists but isn't reachable -> fall through and
-                    // become a working instance WITH a pipe server
-                }
-            }
-            catch (AbandonedMutexException)
-            {
-                isFirst = true;               // previous instance died
-            }
-        }
+			if (!isFirst)
+			{
+				if (SendToRunningInstance(arg))
+				{
+					Shutdown();
+					return;
+				}
+				// Optional: statt still ein zweites Fenster zu öffnen, Fehler anzeigen/loggen
+				System.Diagnostics.Debug.WriteLine("Weiterleitung fehlgeschlagen");
+			}
 
-        if (!GCSettings.IsServerGC)
-            GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+			base.OnStartup(e);
 
-        _main = new MainWindow(arg);
-        _main.Show();
+			if (!GCSettings.IsServerGC)
+				GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
 
-        // 3) always start the pipe server – otherwise a rare startup
-        //    problem makes every later launch open a new window
-        StartPipeServer();
-    }
-    catch (Exception ex)
-    {
-        MessageBox.Show(ex.Message, "Bildbetrachter – Startfehler",
-            MessageBoxButton.OK, MessageBoxImage.Error);
-        Shutdown();
-    }
-}
+			StartPipeServer();                 // zuerst Server, dann Fenster
+			_main = new MainWindow(arg);
+			_main.Show();
+		}
+		catch (Exception ex)
+		{
+			MessageBox.Show(ex.Message, "Bildbetrachter – Startfehler",
+				MessageBoxButton.OK, MessageBoxImage.Error);
+			Shutdown();
+		}
+	}
+
+
+
     protected override void OnExit(ExitEventArgs e)
     {
         _cts.Cancel();

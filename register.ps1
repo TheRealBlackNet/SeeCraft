@@ -10,7 +10,7 @@
 #>
 param(
     [switch]$Uninstall,
-    [string]$SourceDir = (Join-Path $PSScriptRoot 'SeeCraft')
+    [string]$SourceDir = (Join-Path $PSScriptRoot 'publish')
 )
 $ErrorActionPreference = 'Stop'
 
