@@ -227,7 +227,7 @@ public partial class MainWindow : Window
     void BringToFront()
     {
         if (WindowState == WindowState.Minimized)
-            System.Windows.Shell.SystemCommands.RestoreWindow(this);
+            SystemCommands.RestoreWindow(this);
         Activate();
         if (!_fullscreen)
         {
