@@ -70,9 +70,9 @@ public partial class MainWindow : Window
         Viewer.ContextMenu = BuildMenu();
         Viewer.ZoomChanged += byUser =>
         {
-            // Zoom durch den Benutzer: Fenster folgt der Bildgröße (größer und kleiner),
-            // bei einem Bildwechsel wächst das Fenster nur.
-            FitWindowToImage(center: false, allowShrink: byUser, follow: byUser);
+            // Fenster folgt der Bildgröße (größer und kleiner), auch beim Blättern;
+            // das Bild nachführen nur bei Zoom durch den Benutzer.
+            FitWindowToImage(center: false, allowShrink: true, follow: byUser);
             UpdateTitle();
         };
         Viewer.NavigateRequested += d => Step(d);
@@ -722,7 +722,7 @@ public partial class MainWindow : Window
         if (!_viewerActive || _fullscreen || WindowState != WindowState.Normal || !Viewer.HasImage) return;
         if (Viewer.ActualWidth < 1 || Viewer.ActualHeight < 1) return;
 
-        var want = Viewer.AutoFit && !Viewer.UserZoomed ? Viewer.NaturalSize : Viewer.DisplaySize;
+        var want = Viewer.AutoFit && !Viewer.UserZoomed && !Viewer.FitUpscale ? Viewer.NaturalSize : Viewer.DisplaySize;
         var wa = Native.GetWorkArea(this);
 
         // Fensterrahmen + Titelleiste = Fenster minus Anzeigebereich (beide Werte aus demselben Layout-Stand)
@@ -784,7 +784,7 @@ public partial class MainWindow : Window
             case Key.Escape: LeaveViewer(); break;
             case Key.F11: ToggleFullscreen(); break;
             case Key.Divide: Viewer.ApplyMode(ZoomMode.Original); break;   // Ziffernblock "/" = 100 %
-            case Key.Multiply: ZoomOptimal(); break;                        // Ziffernblock "*" = optimale Größe
+            case Key.Multiply: ZoomOptimal(upscale: true); break;                        // Ziffernblock "*" = optimale Größe
             case Key.Add: case Key.OemPlus: Viewer.ZoomStep(1); break;
             case Key.Subtract: case Key.OemMinus: Viewer.ZoomStep(-1); break;
             case Key.Left: Viewer.PanView(-Pan, 0); break;
@@ -876,20 +876,21 @@ public partial class MainWindow : Window
         Viewer.AutoFit = m == ZoomMode.Optimal;
         if (_viewerActive && Viewer.HasImage)
         {
-            if (m == ZoomMode.Optimal) ZoomOptimal();
+            if (m == ZoomMode.Optimal) ZoomOptimal(upscale: false);
             else Viewer.ApplyMode(m);
             UpdateTitle();
         }
     }
 
     /// <summary>
-    /// Optimale Größe: Bild so einpassen, dass es (höchstens mit 100 %) in den Arbeitsbereich des Monitors passt;
+    /// Optimale Größe: Bild so einpassen, dass es in den Arbeitsbereich des Monitors passt (upscale: auch über 100 %);
     /// das Fenster passt sich entsprechend an. Danach folgt die Einpassung auch Größenänderungen des Fensters.
     /// </summary>
-    void ZoomOptimal()
+    void ZoomOptimal(bool upscale)
     {
         if (!_viewerActive || !Viewer.HasImage) return;
         Viewer.AutoFit = true;
+        Viewer.FitUpscale = upscale;   // "*": auch kleine Bilder bis zur Monitorgröße vergrößern
 
         if (_fullscreen || WindowState != WindowState.Normal || Viewer.ActualWidth < 1 || Viewer.ActualHeight < 1)
         {

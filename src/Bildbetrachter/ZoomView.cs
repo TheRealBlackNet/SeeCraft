@@ -43,6 +43,9 @@ public sealed class ZoomView : Grid
 
     /// <summary>Bei Modus "Optimal" passt sich das Bild beim Aendern der Fenstergroesse an.</summary>
     public bool AutoFit { get; set; }
+
+    /// <summary>Beim Einpassen auch ueber 100 % vergroessern (Ziffernblock "*"); sonst nur verkleinern.</summary>
+    public bool FitUpscale { get; set; }
     public double Zoom => _zoom;
     public bool HasImage => _bmp != null;
 
@@ -98,7 +101,7 @@ public sealed class ZoomView : Grid
     {
         if (_bmp == null || vw < 1 || vh < 1) return 1;
         double z = Math.Min(vw / (_bmp.PixelWidth * F), vh / (_bmp.PixelHeight * F));
-        return Math.Min(z, 1.0); // nur verkleinern, nie ueber 100 % vergroessern
+        return Math.Min(z, FitUpscale ? MaxZoom : 1.0);   // ohne FitUpscale nur verkleinern, nie ueber 100 %
     }
 
     /// <summary>Platziert das Bild. Passt es in einer Richtung in den Ausschnitt, wird es dort zentriert;
@@ -132,6 +135,7 @@ public sealed class ZoomView : Grid
     public void SetImage(LoadedImage li, ZoomMode mode)
     {
         _bmp = li.Bitmap;
+        FitUpscale = false;   // gilt nur fuer das Bild, auf dem "*" gedrueckt wurde
         if (li.IsAnimatedGif)
         {
             ImageBehavior.SetAnimatedSource(_image, _bmp);

@@ -39,6 +39,7 @@ direkt die Bildansicht.
 | Mausrad | nächstes / vorheriges Bild (mit **Strg**: Zoom) |
 | Bild ↑ / Bild ↓ | vorheriges / nächstes Bild |
 | Pos1 / Ende | erstes / letztes Bild der aktuellen Sortierung |
+| Num // und Num * | Setzt zoom auf 100% bzw. auf Optimale Skalierung |
 | Pfeiltasten | Bildausschnitt verschieben |
 | Num + / Num − | Zoom: 10 20 30 50 70 100 125 150 200 300 500 700 1000 2000 3000 5000 % (zwischen zwei Stufen → nächste Stufe) |
 | Doppelklick | zurück zur Liste |
