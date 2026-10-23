@@ -35,7 +35,6 @@ public sealed class ZoomView : Grid
     BitmapSource? _bmp;
     double _zoom = 1, _x, _y;
     bool _userZoomed;
-    bool _keepCentered;   // bis zur ersten Benutzeraktion bleibt das Bild bei Fensteränderungen mittig
 
     enum DragMode { None, Pan, Band }
     DragMode _drag;
@@ -47,7 +46,9 @@ public sealed class ZoomView : Grid
     public double Zoom => _zoom;
     public bool HasImage => _bmp != null;
 
-    public event EventHandler? ZoomChanged;
+    /// <summary>Zoom hat sich geaendert. Parameter: true = vom Benutzer ausgeloest (Taste, Mausrad, Rechteck, Menue),
+    /// false = nur weil ein anderes Bild angezeigt wird.</summary>
+    public event Action<bool>? ZoomChanged;
     public event Action<int>? NavigateRequested;
     public event EventHandler? DoubleClicked;
     public event EventHandler? MiddleClicked;
@@ -79,12 +80,6 @@ public sealed class ZoomView : Grid
         {
             if (_bmp == null) return;
             if (AutoFit && !_userZoomed) _zoom = FitZoom();
-            if (_keepCentered)
-            {
-                var d = DisplaySize;
-                _x = (ActualWidth - d.Width) / 2;
-                _y = (ActualHeight - d.Height) / 2;
-            }
             Relayout();
         };
     }
@@ -97,19 +92,24 @@ public sealed class ZoomView : Grid
     public Size DisplaySize => _bmp == null ? new Size(0, 0)
         : new Size(_bmp.PixelWidth * _zoom * F, _bmp.PixelHeight * _zoom * F);
 
-    double FitZoom()
+    double FitZoom() => FitZoom(ActualWidth, ActualHeight);
+
+    double FitZoom(double vw, double vh)
     {
-        if (_bmp == null || ActualWidth < 1 || ActualHeight < 1) return 1;
-        double z = Math.Min(ActualWidth / (_bmp.PixelWidth * F), ActualHeight / (_bmp.PixelHeight * F));
+        if (_bmp == null || vw < 1 || vh < 1) return 1;
+        double z = Math.Min(vw / (_bmp.PixelWidth * F), vh / (_bmp.PixelHeight * F));
         return Math.Min(z, 1.0); // nur verkleinern, nie ueber 100 % vergroessern
     }
 
-    void Relayout()
+    /// <summary>Platziert das Bild. Passt es in einer Richtung in den Ausschnitt, wird es dort zentriert;
+    /// sonst bleibt die Position erhalten (begrenzt auf den Bildrand). vwOverride/vhOverride: Ausschnittgroesse,
+    /// die gleich gilt (Fenster wurde gerade veraendert, das Layout ist aber noch nicht durch).</summary>
+    void Relayout(double? vwOverride = null, double? vhOverride = null)
     {
         if (_bmp == null) { _image.Visibility = Visibility.Hidden; return; }
 
         var d = DisplaySize;
-        double vw = ActualWidth, vh = ActualHeight;
+        double vw = vwOverride ?? ActualWidth, vh = vhOverride ?? ActualHeight;
         _x = d.Width <= vw ? (vw - d.Width) / 2 : Math.Clamp(_x, vw - d.Width, 0);
         _y = d.Height <= vh ? (vh - d.Height) / 2 : Math.Clamp(_y, vh - d.Height, 0);
 
@@ -125,7 +125,7 @@ public sealed class ZoomView : Grid
             : BitmapScalingMode.Linear);
     }
 
-    void Notify() => ZoomChanged?.Invoke(this, EventArgs.Empty);
+    void Notify(bool byUser) => ZoomChanged?.Invoke(byUser);
 
     // ---- oeffentliche Steuerung -------------------------------------------------------------
 
@@ -149,12 +149,12 @@ public sealed class ZoomView : Grid
             default: _zoom = Math.Clamp(_zoom, MinZoom, MaxZoom); _userZoomed = true; break;
         }
 
-        var d = DisplaySize;
-        _x = (ActualWidth - d.Width) / 2;   // neues Bild immer zentriert beginnen
-        _y = (ActualHeight - d.Height) / 2;
-        _keepCentered = true;
+        // Neues Bild: Position oben links. Relayout() zentriert das Bild in jeder Richtung,
+        // in der es komplett in den Ausschnitt passt - ist es groesser, beginnt es oben links.
+        _x = 0;
+        _y = 0;
         Relayout();
-        Notify();
+        Notify(false);
     }
 
     public void Clear()
@@ -169,19 +169,37 @@ public sealed class ZoomView : Grid
     public void ApplyMode(ZoomMode mode)
     {
         if (_bmp == null) return;
-        var center = new Point(ActualWidth / 2, ActualHeight / 2);
-        if (mode == ZoomMode.Original) ZoomTo(1, center);
-        else if (mode == ZoomMode.Optimal)
-        {
-            _userZoomed = false;
-            _zoom = FitZoom();
-            var d = DisplaySize;
-            _x = (ActualWidth - d.Width) / 2;
-            _y = (ActualHeight - d.Height) / 2;
-            _keepCentered = true;
-            Relayout();
-            Notify();
-        }
+        if (mode == ZoomMode.Original) ZoomTo(1, new Point(ActualWidth / 2, ActualHeight / 2));
+        else if (mode == ZoomMode.Optimal) ApplyOptimal();
+    }
+
+    /// <summary>
+    /// Optimale Groesse: Bild einpassen (nie ueber 100 %). Ohne Angabe gilt der aktuelle Ausschnitt;
+    /// mit vw/vh wird auf einen groesseren Ausschnitt eingepasst (z. B. Arbeitsbereich des Monitors),
+    /// auf den das Fenster anschliessend waechst.
+    /// </summary>
+    public void ApplyOptimal(double? vw = null, double? vh = null)
+    {
+        if (_bmp == null) return;
+        _userZoomed = false;
+        _zoom = FitZoom(vw ?? ActualWidth, vh ?? ActualHeight);
+        _x = 0;
+        _y = 0;
+        Relayout();   // zentriert, weil das Bild komplett passt
+        Notify(true);
+    }
+
+    /// <summary>
+    /// Das Fenster wurde gerade veraendert: neue Ausschnittgroesse (vw, vh) und Verschiebung des Fensters
+    /// (Alt minus Neu). Das Bild wird um diese Verschiebung nachgefuehrt, damit es auf dem Bildschirm
+    /// stehen bleibt und das Fenster um das Bild herum waechst bzw. schrumpft.
+    /// </summary>
+    public void FollowWindow(double vw, double vh, double shiftX, double shiftY)
+    {
+        if (_bmp == null) return;
+        _x += shiftX;
+        _y += shiftY;
+        Relayout(vw, vh);
     }
 
     public void ZoomTo(double zoom, Point anchor)
@@ -193,13 +211,12 @@ public sealed class ZoomView : Grid
 
         _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
         _userZoomed = true;
-        _keepCentered = false;
 
         var d1 = DisplaySize;
         _x = anchor.X - fx * d1.Width;
         _y = anchor.Y - fy * d1.Height;
         Relayout();
-        Notify();
+        Notify(true);
     }
 
     /// <summary>Naechste feste Zoomstufe (10 % ... 5000 %); liegt der Zoom dazwischen, geht es zur naechsten Stufe.</summary>
@@ -216,7 +233,6 @@ public sealed class ZoomView : Grid
     public void PanView(double dx, double dy)
     {
         if (_bmp == null) return;
-        _keepCentered = false;
         _x -= dx;
         _y -= dy;
         Relayout();
@@ -244,7 +260,6 @@ public sealed class ZoomView : Grid
         if (scrollable && !shift)
         {
             _drag = DragMode.Pan;
-            _keepCentered = false;
             _dragX0 = _x;
             _dragY0 = _y;
             Cursor = Cursors.SizeAll;
@@ -307,13 +322,12 @@ public sealed class ZoomView : Grid
         double newS = Math.Min(ActualWidth / pxW, ActualHeight / pxH);
         _zoom = Math.Clamp(newS / F, MinZoom, MaxZoom);
         _userZoomed = true;
-        _keepCentered = false;
 
         newS = _zoom * F;
         _x = ActualWidth / 2 - (px0 + pxW / 2) * newS;
         _y = ActualHeight / 2 - (py0 + pxH / 2) * newS;
         Relayout();
-        Notify();
+        Notify(true);
     }
 
     void OnWheel(object sender, MouseWheelEventArgs e)

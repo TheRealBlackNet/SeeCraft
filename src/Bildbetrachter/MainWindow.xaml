@@ -9,6 +9,10 @@
     <Grid>
         <!-- ===== Ansicht "Liste": Ordner | Vorschau | Bildliste ===== -->
         <Grid x:Name="ListRoot">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260" MinWidth="120" />
                 <ColumnDefinition Width="5" />
@@ -17,11 +21,17 @@
                 <ColumnDefinition Width="*" MinWidth="150" />
             </Grid.ColumnDefinitions>
 
-            <TreeView x:Name="FolderTree" Grid.Column="0" SelectedItemChanged="FolderTree_SelectedItemChanged" />
-            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
+            <!-- aktueller Ordner (am oberen Rand, über die ganze Breite) -->
+            <TextBox x:Name="FolderBox" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="5"
+                     IsReadOnly="True" IsReadOnlyCaretVisible="True" Padding="6,3"
+                     VerticalContentAlignment="Center" BorderThickness="0,0,0,1"
+                     BorderBrush="#FFD0D0D0" Background="#FFF7F7F7" />
+
+            <TreeView x:Name="FolderTree" Grid.Row="1" Grid.Column="0" SelectedItemChanged="FolderTree_SelectedItemChanged" />
+            <GridSplitter Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
 
             <!-- Vorschau: auf Spaltenbreite eingepasst -->
-            <Grid Grid.Column="2" Background="#FF1E1E1E">
+            <Grid Grid.Row="1" Grid.Column="2" Background="#FF1E1E1E">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -51,9 +61,9 @@
                 </Border>
             </Grid>
 
-            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
+            <GridSplitter Grid.Row="1" Grid.Column="3" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
 
-            <ListView x:Name="FileList" Grid.Column="4" SelectionMode="Single"
+            <ListView x:Name="FileList" Grid.Row="1" Grid.Column="4" SelectionMode="Single"
                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                       ScrollViewer.CanContentScroll="True"
                       SelectionChanged="FileList_SelectionChanged"

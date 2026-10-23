@@ -68,7 +68,13 @@ public partial class MainWindow : Window
 
         FileList.ContextMenu = BuildMenu();
         Viewer.ContextMenu = BuildMenu();
-        Viewer.ZoomChanged += (_, _) => { FitWindowToImage(center: false, allowShrink: false); UpdateTitle(); };
+        Viewer.ZoomChanged += byUser =>
+        {
+            // Zoom durch den Benutzer: Fenster folgt der Bildgröße (größer und kleiner),
+            // bei einem Bildwechsel wächst das Fenster nur.
+            FitWindowToImage(center: false, allowShrink: byUser, follow: byUser);
+            UpdateTitle();
+        };
         Viewer.NavigateRequested += d => Step(d);
         Viewer.DoubleClicked += (_, _) => LeaveViewer();
         Viewer.MiddleClicked += (_, _) => ToggleFullscreen();
@@ -416,6 +422,7 @@ public partial class MainWindow : Window
     {
         int token = ++_openToken;
         _folder = folder;
+        FolderBox.Text = folder;
         _s.LastFolder = folder;
 
         List<ImageItem> list;
@@ -704,15 +711,18 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Passt das Fenster an die Bildgröße an (höchstens bis zum Arbeitsbereich des Monitors).
-    /// center/allowShrink = true beim Wechsel in die Bildansicht; sonst wächst das Fenster nur.
+    /// center = true beim Wechsel in die Bildansicht: Fenster mittig auf dem Monitor.
+    /// center = false: Fenster ändert sich um seine Mitte herum (wandert nicht davon).
+    /// allowShrink = false: Fenster wächst nur; true: Fenster schrumpft auch auf die Bildgröße.
+    /// follow = true: das Bild bleibt dabei auf dem Bildschirm stehen (Zoom durch den Benutzer).
     /// Im Modus "Optimal" gilt die Originalgröße des Bildes als Wunschgröße (danach wird eingepasst).
     /// </summary>
-    void FitWindowToImage(bool center, bool allowShrink)
+    void FitWindowToImage(bool center, bool allowShrink, bool follow = false)
     {
         if (!_viewerActive || _fullscreen || WindowState != WindowState.Normal || !Viewer.HasImage) return;
         if (Viewer.ActualWidth < 1 || Viewer.ActualHeight < 1) return;
 
-        var want = _mode == ZoomMode.Optimal && !Viewer.UserZoomed ? Viewer.NaturalSize : Viewer.DisplaySize;
+        var want = Viewer.AutoFit && !Viewer.UserZoomed ? Viewer.NaturalSize : Viewer.DisplaySize;
         var wa = Native.GetWorkArea(this);
 
         // Fensterrahmen + Titelleiste = Fenster minus Anzeigebereich (beide Werte aus demselben Layout-Stand)
@@ -730,18 +740,28 @@ public partial class MainWindow : Window
         h = Math.Max(h, MinHeight);
         if (Math.Abs(w - Width) < 0.5 && Math.Abs(h - Height) < 0.5 && !center) return;
 
-        Width = w;
-        Height = h;
+        double oldLeft = Left, oldTop = Top;
+        double newLeft, newTop;
         if (center)
         {
-            Left = wa.Left + (wa.Width - w) / 2;
-            Top = wa.Top + (wa.Height - h) / 2;
+            newLeft = wa.Left + (wa.Width - w) / 2;
+            newTop = wa.Top + (wa.Height - h) / 2;
         }
         else
         {
-            Left = Math.Max(wa.Left, Math.Min(Left, wa.Right - w));
-            Top = Math.Max(wa.Top, Math.Min(Top, wa.Bottom - h));
+            // um die Fenstermitte herum wachsen/schrumpfen, im Arbeitsbereich bleiben
+            newLeft = Math.Max(wa.Left, Math.Min(oldLeft + (Width - w) / 2, wa.Right - w));
+            newTop = Math.Max(wa.Top, Math.Min(oldTop + (Height - h) / 2, wa.Bottom - h));
         }
+
+        Width = w;
+        Height = h;
+        Left = newLeft;
+        Top = newTop;
+
+        // Bild um die Fensterverschiebung nachführen, damit es auf dem Bildschirm stehen bleibt
+        if (follow && !center)
+            Viewer.FollowWindow(w - chromeW, h - chromeH, oldLeft - newLeft, oldTop - newTop);
     }
 
     // ============================================================ Tastatur
@@ -763,6 +783,8 @@ public partial class MainWindow : Window
             case Key.End: _lastDir = 1; ShowIndex(_items.Count - 1); break;
             case Key.Escape: LeaveViewer(); break;
             case Key.F11: ToggleFullscreen(); break;
+            case Key.Divide: Viewer.ApplyMode(ZoomMode.Original); break;   // Ziffernblock "/" = 100 %
+            case Key.Multiply: ZoomOptimal(); break;                        // Ziffernblock "*" = optimale Größe
             case Key.Add: case Key.OemPlus: Viewer.ZoomStep(1); break;
             case Key.Subtract: case Key.OemMinus: Viewer.ZoomStep(-1); break;
             case Key.Left: Viewer.PanView(-Pan, 0); break;
@@ -854,9 +876,31 @@ public partial class MainWindow : Window
         Viewer.AutoFit = m == ZoomMode.Optimal;
         if (_viewerActive && Viewer.HasImage)
         {
-            Viewer.ApplyMode(m);
+            if (m == ZoomMode.Optimal) ZoomOptimal();
+            else Viewer.ApplyMode(m);
             UpdateTitle();
         }
+    }
+
+    /// <summary>
+    /// Optimale Größe: Bild so einpassen, dass es (höchstens mit 100 %) in den Arbeitsbereich des Monitors passt;
+    /// das Fenster passt sich entsprechend an. Danach folgt die Einpassung auch Größenänderungen des Fensters.
+    /// </summary>
+    void ZoomOptimal()
+    {
+        if (!_viewerActive || !Viewer.HasImage) return;
+        Viewer.AutoFit = true;
+
+        if (_fullscreen || WindowState != WindowState.Normal || Viewer.ActualWidth < 1 || Viewer.ActualHeight < 1)
+        {
+            Viewer.ApplyOptimal();   // Vollbild/maximiert: in den vorhandenen Ausschnitt einpassen
+            return;
+        }
+
+        var wa = Native.GetWorkArea(this);
+        double chromeW = ActualWidth - Viewer.ActualWidth;
+        double chromeH = ActualHeight - Viewer.ActualHeight;
+        Viewer.ApplyOptimal(wa.Width - chromeW, wa.Height - chromeH);
     }
 
     void ApplySort()

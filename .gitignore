@@ -2,3 +2,5 @@
 /publish
 /src/Bildbetrachter/bin/Release/*
 /src/Bildbetrachter/obj
+.vs
+/*.bak
