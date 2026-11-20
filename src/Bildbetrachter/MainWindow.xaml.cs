@@ -801,6 +801,22 @@ public partial class MainWindow : Window
     ContextMenu BuildMenu()
     {
         var menu = new ContextMenu();
+
+        // Zoom-Funktionen (nur in der Bildansicht aktiv)
+        var zoomActions = new List<MenuItem>
+        {
+            Item("🔍➕ Einzoomen", (_, _) => Viewer.ZoomStep(1)),
+            Item("🔍➖ Auszoomen", (_, _) => Viewer.ZoomStep(-1)),
+            Item("🔍💯 Original Größe", (_, _) => Viewer.ApplyMode(ZoomMode.Original)),
+            Item("🔍🖼️ auf Idealgröße", (_, _) => ZoomOptimal(upscale: true)),
+        };
+        zoomActions[0].InputGestureText = "+";
+        zoomActions[1].InputGestureText = "-";
+        zoomActions[2].InputGestureText = "/";
+        zoomActions[3].InputGestureText = "*";
+        foreach (var za in zoomActions) menu.Items.Add(za);
+        menu.Items.Add(new Separator());
+
         menu.Items.Add(Item("Verschieben …", (_, _) => MoveOrCopy(move: true)));
         menu.Items.Add(Item("Kopieren …", (_, _) => MoveOrCopy(move: false)));
         menu.Items.Add(new Separator());
@@ -857,6 +873,7 @@ public partial class MainWindow : Window
         {
             foreach (var (mi, f, desc) in sortItems) mi.IsChecked = _s.SortField == f && _s.SortDescending == desc;
             foreach (var (mi, m) in zoomItems) mi.IsChecked = _mode == m;
+            foreach (var za in zoomActions) za.IsEnabled = _viewerActive && Viewer.HasImage;
             thumbs.IsChecked = _s.ShowThumbnails;
             info.IsChecked = _s.ShowInfo;
         };
